@@ -1,2 +1,11 @@
+import numpy as np
+
+
 def lambda_handler(event, context):
-    return {"statusCode": 200, "body": "Hello, World!"}
+
+    # Create a 3x3 matrix of random numbers
+    matrix = np.random.rand(3, 3)
+
+    # Return the matrix as a string
+
+    return {"statusCode": 200, "body": str(matrix)}
