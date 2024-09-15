@@ -1,65 +1,15 @@
-import os
-from supabase import create_client
-from dotenv import load_dotenv
-import logging
+from device_manager import DeviceManager
+from supabase_client import SupabaseClientSingleton
+from logger_config import logger
 from typing import Dict, Any
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-load_dotenv(".env")
-
-
-def get_supabase_client():
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
-
-    if not supabase_url or not supabase_key:
-        raise ValueError("Supabase URL or key is missing")
-
-    return create_client(supabase_url, supabase_key)
-
-
-def get_device_status(supabase_client, device_id: str, room: str) -> str:
-    data = (
-        supabase_client.table("IotTests")
-        .select("in_or_out, created_at")
-        .eq("device_id", device_id)
-        .eq("room", room)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    logger.info(f"Retrieved data from Supabase: {data}")
-
-    if not data.data:
-        logger.warning("No existing data found for the device and room")
-        return "in"  # Default to "in" if no previous data
-
-    return "in" if data.data[0]["in_or_out"] == "out" else "out"
-
-
-def insert_device_data(supabase_client, device_id: str, room: str, status: str):
-    insert_result = (
-        supabase_client.table("IotTests")
-        .insert(
-            {
-                "device_id": device_id,
-                "room": room,
-                "in_or_out": status,
-            }
-        )
-        .execute()
-    )
-    logger.info("Data inserted successfully into Supabase")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Received event: {event}")
 
     try:
-        supabase_client = get_supabase_client()
+        supabase_client = SupabaseClientSingleton.get_instance()
+        device_manager = DeviceManager(supabase_client)
 
         device_id = event.get("device_id")
         room = event.get("room")
@@ -70,12 +20,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info(f"Processing data for device_id: {device_id}, room: {room}")
 
-        status = get_device_status(supabase_client, device_id, room)
-        logger.info(f"Determined new status: {status}")
-
-        insert_device_data(supabase_client, device_id, room, status)
-
-        return {"statusCode": 200, "body": "Data inserted successfully"}
+        result = device_manager.process_device_update(device_id, room)
+        return result
 
     except ValueError as ve:
         logger.error(f"Configuration error: {str(ve)}")
@@ -83,3 +29,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error processing data: {str(e)}")
         return {"statusCode": 500, "body": "Error processing data"}
+
+
+if __name__ == "__main__":
+    lambda_handler({"device_id": "1", "room": "1"}, None)
